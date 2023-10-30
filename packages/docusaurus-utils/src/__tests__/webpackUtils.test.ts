@@ -25,6 +25,7 @@ describe('getFileLoaderUtils()', () => {
                   },
                 },
               },
+              'removeXMLNS',
             ],
           },
         }),
