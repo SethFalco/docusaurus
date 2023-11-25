@@ -9,10 +9,10 @@ import path from 'path';
 import {createRequire} from 'module';
 import rtlcss from 'rtlcss';
 import {readDefaultCodeTranslationMessages} from '@docusaurus/theme-translations';
+import {AtRule, type Plugin as PostCssPlugin} from 'postcss';
 import {getTranslationFiles, translateThemeConfig} from './translations';
 import type {LoadContext, Plugin} from '@docusaurus/types';
 import type {ThemeConfig} from '@docusaurus/theme-common';
-import type {Plugin as PostCssPlugin} from 'postcss';
 import type {PluginOptions} from '@docusaurus/theme-classic';
 import type webpack from 'webpack';
 
@@ -206,6 +206,59 @@ export default function themeClassic(
             return rtlcss(result.root as unknown as rtlcss.ConfigOptions);
           },
         };
+        postCssOptions.plugins.push(plugin);
+      }
+
+      if (colorMode.disableSwitch && colorMode.respectPrefersColorScheme) {
+        const plugin: PostCssPlugin = {
+          postcssPlugin: 'PrefersColorSchemePlugin',
+          Rule(rule) {
+            if (!rule.parent) {
+              return;
+            }
+
+            const pattern = /\[data-theme=(["']|)([^"']+)\1\]/;
+            const newSelectors = [];
+
+            for (const selector of rule.selectors) {
+              const match = pattern.exec(selector);
+
+              if (!match) {
+                newSelectors.push(selector);
+                continue;
+              }
+
+              const [fullMatch, , theme] = match;
+
+              // Replace attribute selector ([data-theme]) with an always
+              // matching selector of equal specificity (0, 1, 0)
+              const trimmed = selector.replace(fullMatch, '');
+              const newSelector =
+                trimmed.length > 0 ? `${trimmed}:not(._)` : ':root';
+
+              const newRule = rule.clone();
+              newRule.selector = newSelector;
+              newRule.selectors = [newSelector];
+
+              const media = new AtRule({
+                name: 'media',
+                params: `(prefers-color-scheme: ${theme})`,
+                nodes: [newRule],
+              });
+
+              rule.parent.insertBefore(rule, media);
+            }
+
+            if (newSelectors.length === 0) {
+              rule.remove();
+              return;
+            }
+
+            rule.selector = newSelectors.join(',');
+            rule.selectors = newSelectors;
+          },
+        };
+
         postCssOptions.plugins.push(plugin);
       }
 
